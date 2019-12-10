@@ -1,0 +1,404 @@
+<html>
+	<head>
+		<script type="text/javascript" src="main.js"></script>
+		<script type="text/javascript" src="field.js"></script>
+		<script type="text/javascript" src="ball.js"></script>
+		<script type="text/javascript" src="box.js"></script>
+		<script type="text/javascript" src="player.js"></script>
+		<script type="text/javascript" src="crosshair.js"></script>
+		<script type="text/javascript" src="gun.js"></script>
+	</head>
+	<body>
+		<table border="0">
+			<tr>
+				<td>
+					<div id="main" style="display: inline-block; width: 500px; height: 400px;"></div>
+				</td>
+				<td valign="top">
+					<div style="background-color:grey; border-radius: 5px; padding: 5px; width: 500px;">
+						<h4>Game Options</h4>
+						<table border="0">
+							<tr><td><label for="own_value" id="own_value_label">Own value (5)</label></td><td><input type="range" min="1" max="10" value="5" class="slider" id="own_value_viewers" /><font style="font-size: 10px;">Viewers</font><br><input type="range" min="1" max="10" value="5" class="slider" id="own_value_money_spent" /><font style="font-size: 10px;">Money spent</font><br><input type="range" min="1" max="10" value="10" class="slider" id="own_value_likely_spending_more" /><font style="font-size: 10px;">Likelihood to spend more money</font><br></td></tr>
+							
+							<tr><td><label for="aim_assist_by_value">Aim assist by own value</label></td><td><input type="checkbox" id="aim_assist_by_value" checked="checked" /></td></tr>
+							<tr><td><label for="aim_by_target_value">Aim by target value</label></td><td><input type="checkbox" id="aim_by_target_value" checked="checked" /></td></tr>
+							
+							<tr><td><label for="bloom_by_own_value">Bloom by own value</label></td><td><input type="checkbox" id="bloom_by_own_value" checked="checked" /></td></tr>
+							<tr><td><label for="bloom_by_target_value">Bloom by target value</label></td><td><input type="checkbox" id="bloom_by_target_value" checked="checked" /></td></tr>
+						</table>
+					</div><br>
+					<div id="player_list" style="background-color:grey; border-radius: 5px; padding: 5px; width: 500px;">
+						<h4>Enemylist</h4>
+					</div>
+				</td>
+			</tr>
+		</table>
+		<div style="background-color:grey; border-radius: 5px; padding: 5px; width: 200px;">
+			<h4>Gun Info</h4>
+			<table border="0">
+				<tr><td>Closest target</td><td id="gun_target"></td></tr>
+				<tr><td>Bloom radius</td><td id="bloom_radius"></td></tr>
+				<tr><td>Aim assist fov radius</td><td id="aim_assist_radius"></td></tr>
+				<tr><td>Aim deflection fov radius</td><td id="aim_deflect_radius"></td></tr>
+			</table>
+		</div><br>
+		<div id="add_player_container" style="background-color:grey; border-radius: 5px; padding: 5px; width: 200px;">
+			<h4>Add enemy</h4>
+			<label for="add_player_value" id="add_player_color" style="padding: 5px; text-align: center; border-radius: 5px; background-color: #ffffff;">Value</label><input type="range" min="1" max="10" value="1" class="slider" id="add_player_value" /><br><br>
+			<input id="add_player_button" type="button" onclick="javascript:addPlayer(250, 100)" value="Add" />
+		</div><br>
+		
+		<script type="text/javascript">
+			function valueToRGB(value) {
+				var fac = value / 10.0;
+				var r = Math.round(255 - (fac * 109));
+				var g = Math.round(255 - (fac * 175));
+				var b = Math.round(255 - (fac * 6));
+				var hex_r = Number(r).toString(16);
+				var hex_g = Number(g).toString(16);
+				var hex_b = Number(b).toString(16);
+				if (hex_r.length < 2) hex_r = "0" + hex_r;
+				if (hex_g.length < 2) hex_g = "0" + hex_g;
+				if (hex_b.length < 2) hex_b = "0" + hex_b;
+				return "#" + hex_r + hex_g + hex_b;
+			}
+		
+			document.getElementById("add_player_value").onchange = function(e) {
+				document.getElementById("add_player_color").style.backgroundColor = valueToRGB(this.value);
+			};
+			
+			document.getElementById("own_value_viewers").onchange = own_value_changed;
+			document.getElementById("own_value_money_spent").onchange = own_value_changed;
+			document.getElementById("own_value_likely_spending_more").onchange = own_value_changed;
+			
+			function own_value_changed() {
+				var viewers = parseFloat(document.getElementById("own_value_viewers").value)*10000;
+				var money_spent = parseFloat(document.getElementById("own_value_money_spent").value)*10000;
+				var likelihood_spending_more = parseFloat(document.getElementById("own_value_likely_spending_more").value)/10.0;
+				
+				var value = parseInt(Math.round(((likelihood_spending_more * money_spent) + viewers)/(100000+100000) * 100)/10);
+				if (value < 1) value = 1;
+				crosshair.bg_set(valueToRGB(value));
+				own_value = value;
+				document.getElementById("own_value_label").style.backgroundColor = valueToRGB(value);
+				document.getElementById("own_value_label").innerHTML = "Own value (" + own_value + ")";
+			}
+			
+			document.getElementById("aim_assist_by_value").onchange = function(e) {
+				aim_assist_by_value = this.checked;
+			};
+		
+			document.getElementById("aim_by_target_value").onchange = function(e) {
+				aim_by_target_value = this.checked;
+			};
+			
+			document.getElementById("bloom_by_target_value").onchange = function(e) {
+				bloom_by_target_value = this.checked;
+			};
+			
+			document.getElementById("bloom_by_own_value").onchange = function(e) {
+				bloom_by_own_value = this.checked;
+			};
+		
+			function addPlayer(x, y, value = null) {
+				var player_count = Object.keys(players).length;
+				
+				var player = new Player();
+				player.pos_set(x, y);
+				if (value == null) {
+					player.value = document.getElementById("add_player_value").value;
+				} else {
+					player.value = value;
+				}
+				player.bg_set(valueToRGB(player.value));
+				player.moving = false;
+				player.body.innerHTML = (player_count+1);
+				
+				main_app.component_add(player, main_field.id);
+				main_app.component_add(player.head, player.id);
+				main_app.component_add(player.body, player.id);
+				main_app.component_add(player.leg_1, player.id);
+				main_app.component_add(player.leg_2, player.id);
+				
+				main_app.create_body();
+				
+				document.getElementById(player.id).onmouseover = function(e) {
+					gun.target = player;
+				};
+				document.getElementById(player.id).onmouseout = function(e) {
+					gun.target = null;
+				};
+				var list_item = document.createElement('div');
+				list_item.id = "player_" + (player_count+1);
+				
+				var moving_box = document.createElement('input');
+				moving_box.type = "checkbox";
+				moving_box.id = "player_moving_" + (player_count+1);
+				moving_box.checked = false;
+				moving_box.onchange = function(e) {
+					players["player_" + (player_count+1)].moving = document.getElementById("player_moving_" + (player_count+1)).checked;
+				};
+				
+				var value_span = document.createElement('span');
+				value_span.style.backgroundColor = valueToRGB(player.value);
+				value_span.innerHTML = "value: " + player.value;
+				
+				list_item.appendChild(document.createTextNode("id: " + (player_count+1) + ", "));
+				list_item.appendChild(value_span);
+				list_item.appendChild(document.createTextNode(", moving: "));
+				list_item.appendChild(moving_box);
+				list_item.appendChild(document.createTextNode("hits: "));
+				
+				var hit_node = document.createElement('span');
+				hit_node.id = "player_hitnode_" + (player_count+1);
+				hit_node.innerHTML = "[head: 0, body: 0, legs: 0, acc: 100%]";
+				
+				list_item.appendChild(hit_node);
+				
+				document.getElementById("player_list").appendChild(list_item);
+				document.getElementById(player.body.id).style.textAlign = 'center';
+				document.getElementById(player.body.id).innerHTML = (player_count+1);
+				
+				players["player_" + (player_count+1)] = player;
+			}
+			
+			function getClosestTarget() {
+				var player_count = Object.keys(players).length;
+				var min_dist = 100000;
+				
+				var closest = null;
+				for (var i = 1; i <= player_count; i++) {
+					var x = (mouse_x - players["player_" + i].pos[0])*(mouse_x - players["player_" + i].pos[0]);
+					var y = (mouse_y - players["player_" + i].pos[1])*(mouse_y - players["player_" + i].pos[1]);
+				
+					if (x+y < min_dist) {
+						min_dist = x+y;
+						closest = i;
+					}
+				}
+				return closest;
+			}
+		
+			var game_running = true;
+			var tick_count = 0;
+			
+			var own_value = 5;
+			var bloom_by_own_value = true;
+			var aim_assist_by_value = true;
+			var bloom_by_target_value = true;
+			var aim_by_target_value = true;
+			
+			var players = {};
+		
+			var main_app = new Main();
+			var main_field = new Field();
+						
+			main_app.component_add(main_field, "main");
+			
+			//Player
+			addPlayer(320, 100, 1);
+			addPlayer(70, 50, 5);
+			addPlayer(120, 200, 10);
+	
+			//Crosshair
+			var crosshair = new Crosshair();
+			crosshair.pos_set(250, 150);
+			crosshair.bg_set('#ffffff');
+			
+			main_app.component_add(crosshair, main_field.id);
+			main_app.component_add(crosshair.box_left, crosshair.id);
+			main_app.component_add(crosshair.box_right, crosshair.id);
+			main_app.component_add(crosshair.box_up, crosshair.id);
+			main_app.component_add(crosshair.box_down, crosshair.id);
+			
+			//Gun
+			var gun = new Gun();
+			gun.main_app = main_app;
+			gun.main_field = main_field;
+			gun.crosshair = crosshair;
+	
+			main_app.create_body();
+			main_app.draw();
+			
+			var mouse_x = 0;
+			var mouse_y = 0;
+			
+			document.getElementById(main_field.id).onmousemove = function(e) {
+				var x = e.pageX - this.offsetLeft - 10;
+				var y = e.pageY - this.offsetTop - 10;
+				
+				mouse_x = x;
+				mouse_y = y;
+					
+				if (gun.target == null) {
+					crosshair.pos_set(x, y);
+				} else {
+					if (x < main_field.dim[0] && y < main_field.dim[1]) {
+						if (aim_assist_by_value && !aim_by_target_value) {
+							document.getElementById("aim_assist_radius").innerHTML = own_value;
+							document.getElementById("aim_deflect_radius").innerHTML = 0;
+							aimAssist(own_value, x, y);
+						} else if (!aim_assist_by_value && aim_by_target_value) {
+							aimDeflect(gun.target.value, x, y);
+							document.getElementById("aim_assist_radius").innerHTML = 0;
+							document.getElementById("aim_deflect_radius").innerHTML = gun.target.value;
+						} else if (aim_assist_by_value && aim_by_target_value){
+							aim_value = own_value - gun.target.value;
+							if (aim_value > 0) {
+								document.getElementById("aim_assist_radius").innerHTML = aim_value;
+								document.getElementById("aim_deflect_radius").innerHTML = 0;
+								aimAssist(aim_value, x, y);
+							} else if (aim_value < 0) {
+								document.getElementById("aim_assist_radius").innerHTML = 0;
+								document.getElementById("aim_deflect_radius").innerHTML = -aim_value;
+								aimDeflect(-aim_value, x, y);
+							} else {
+								document.getElementById("aim_assist_radius").innerHTML = 0;
+								document.getElementById("aim_deflect_radius").innerHTML = 0;
+								crosshair.pos_set(x, y);		
+							}
+						} else {
+							document.getElementById("aim_assist_radius").innerHTML = 0;
+							document.getElementById("aim_deflect_radius").innerHTML = 0;
+							crosshair.pos_set(x, y);
+						}
+					}
+				}
+			};
+			document.getElementById(main_field.id).onmousedown = function(e) {
+				gun.shooting = true;
+			};
+			document.getElementById(main_field.id).onmouseup = function(e) {
+				gun.shooting = false;
+			};
+			
+			function aimCleanup(aim_value, x, y) {
+				if (aim_assist_ticks > 0) {
+					aim_assist_ticks--;
+					var target_x = x + ((1 - (aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(aim_assist_target.pos[0]+10-x));
+					var target_y = y + ((1 - (aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(aim_assist_target.pos[1]-5-y));
+					crosshair.pos_set(target_x, target_y);
+				}
+				if (aim_deflect_ticks > 0) {
+					aim_deflect_ticks--;
+					var target_x = crosshair.pos[0] + (((aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(x-crosshair.pos[0]));
+					var target_y = crosshair.pos[1] + (((aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(y-crosshair.pos[1]));
+					crosshair.pos_set(target_x, target_y);
+				}
+			}
+			
+			var aim_assist_target = null;
+			var aim_assist_ticks = 0;
+			var aim_assist_target_ticks = 20;
+			function aimAssist(aim_value, x, y) {
+				if (aim_deflect_ticks > 0 || (aim_assist_ticks > 0 && gun.target != aim_assist_target)) {
+					aimCleanup(aim_value, x, y);
+				} else {
+					aim_assist_target = gun.target;
+					var dist_x = (x-gun.target.pos[0]-10)*(x-gun.target.pos[0]-10);
+					var dist_y = (y-gun.target.pos[1]+5)*(y-gun.target.pos[1]+5);
+					if (Math.sqrt(dist_x + dist_y) < aim_value * 10) { 
+						var target_x = x + ((1 - (aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(gun.target.pos[0]+10-x));
+						var target_y = y + ((1 - (aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(gun.target.pos[1]-5-y));
+						crosshair.pos_set(target_x, target_y);
+						if (aim_assist_ticks < aim_assist_target_ticks) aim_assist_ticks++;
+					} else {
+						if (aim_assist_ticks > 0) {
+							aimCleanup(aim_value, x, y);
+						} else {
+							crosshair.pos_set(x, y);
+						}
+					}
+				}
+			}
+			
+			var aim_deflect_target = null;
+			var aim_deflect_ticks = 0;
+			var aim_deflect_target_ticks = 20;
+			function aimDeflect(aim_value, x, y) {
+				if (aim_assist_ticks > 0 || (aim_deflect_ticks > 0 && gun.target != aim_deflect_target)) {
+					aimCleanup(aim_value, x, y);
+				} else {
+					aim_deflect_target = gun.target;
+					var dist_x = (x-gun.target.pos[0]-10)*(x-gun.target.pos[0]-10);
+					var dist_y = (y-gun.target.pos[1]+5)*(y-gun.target.pos[1]+5);
+					if (gun.target.value > 1 && Math.sqrt(dist_x + dist_y) < aim_value * 3) {
+						var a = x-gun.target.pos[0]-10;
+						var b = y-gun.target.pos[1]+5;
+						var r = Math.sqrt(dist_x + dist_y);
+						var phi = 0;
+						if (a < 0 && b < 0) phi = Math.atan(b/a)-Math.PI;
+						if (a == 0 && b < 0) phi = -Math.PI/2.0;
+						if (a > 0) phi = Math.atan(b/a);
+						if (a == 0 && b > 0) phi = Math.PI/2.0;
+						if (a < 0 && b >= 0) phi = Math.atan(b/a)+Math.PI;
+					
+						var t_factor = (1 - (aim_deflect_target_ticks-aim_deflect_ticks)/(aim_deflect_target_ticks));
+					
+						var target_x = gun.target.pos[0]+10 + ((1- t_factor)*(r/(aim_value * 3)) + t_factor)*(aim_value * 3)*Math.cos(phi);
+						var target_y = gun.target.pos[1]-5 + ((1- t_factor)*(r/(aim_value * 3)) + t_factor)*(aim_value * 3)*Math.sin(phi);
+						crosshair.pos_set(target_x, target_y);
+						if (aim_deflect_ticks < aim_deflect_target_ticks) aim_deflect_ticks++;
+					} else {
+						if (aim_deflect_ticks > 0) {
+							aim_deflect_ticks--;
+							var target_x = crosshair.pos[0] + (((aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(x-crosshair.pos[0]));
+							var target_y = crosshair.pos[1] + (((aim_assist_target_ticks-aim_assist_ticks)/(aim_assist_target_ticks))*(y-crosshair.pos[1]));
+							crosshair.pos_set(target_x, target_y);
+						} else {
+							crosshair.pos_set(x, y);
+						}
+					}
+				}
+			}
+			
+			function mainLoop() {
+				var closest_target = getClosestTarget();
+				if (closest_target != null) gun.target = players["player_" + closest_target];
+				var bloom_radius = 1;
+				
+				if (gun.target == null) {
+					document.getElementById("gun_target").innerHTML = "no target";
+					
+				} else {
+					document.getElementById("gun_target").innerHTML = gun.target.body.innerHTML;
+					if (bloom_by_own_value) bloom_radius = 1/(own_value);
+					if (bloom_by_target_value) bloom_radius *= gun.target.value;
+				}
+				
+				bloom_radius = Math.round(bloom_radius*100)/100;
+				
+				document.getElementById("bloom_radius").innerHTML = bloom_radius;
+				
+				if (!game_running) {
+					
+				} else {
+					if (gun.shooting) {
+						var bullet_pos = gun.shoot(tick_count, bloom_radius);
+						if (bullet_pos != null) {
+							gun.target.shot_at++;
+							for (var i = 0; i < Object.keys(players).length; i++) {
+								if (players["player_" + (i+1)].hit(bullet_pos[0], bullet_pos[1])) {
+									var head_hits = players["player_" + (i+1)].head.hitcount;
+									var body_hits = players["player_" + (i+1)].body.hitcount;
+									var leg_hits = players["player_" + (i+1)].leg_1.hitcount + players["player_" + (i+1)].leg_2.hitcount;
+									document.getElementById("player_hitnode_" + (i+1)).innerHTML = "[head: " + head_hits + ", body: " + body_hits + ", legs: " + leg_hits + ", acc: " + Math.round((head_hits+body_hits+leg_hits)/gun.target.shot_at*100) + "%]";
+								}
+							}
+						}
+						main_app.create_body();
+					}
+					main_app.update();
+					main_app.draw();
+				}
+				tick_count++;
+				requestAnimationFrame(mainLoop);
+			}
+			
+			own_value_changed();
+			requestAnimationFrame(mainLoop);
+		</script>
+		
+	</body>
+</html>
+
